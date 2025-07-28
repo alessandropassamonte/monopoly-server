@@ -14,6 +14,9 @@ import java.util.Set;
 @Table(name = "players")
 @Data
 public class Player {
+    @Version
+    private int version;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

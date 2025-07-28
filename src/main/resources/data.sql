@@ -49,30 +49,13 @@ INSERT INTO properties (name, price, rent, color_group, type) VALUES
 
 -- STAZIONI FERROVIARIE
 INSERT INTO properties (name, price, rent, color_group, type) VALUES
-                                                                  ('Stazione Nord', 200, 25, 'BROWN', 'RAILROAD'),
-                                                                  ('Stazione Est', 200, 25, 'LIGHT_BLUE', 'RAILROAD'),
-                                                                  ('Stazione Sud', 200, 25, 'ORANGE', 'RAILROAD'),
-                                                                  ('Stazione Ovest', 200, 25, 'GREEN', 'RAILROAD');
+                                                                  ('Stazione Nord', 200, 25, 'BLACK', 'RAILROAD'),
+                                                                  ('Stazione Est', 200, 25, 'BLACK', 'RAILROAD'),
+                                                                  ('Stazione Sud', 200, 25, 'BLACK', 'RAILROAD'),
+                                                                  ('Stazione Ovest', 200, 25, 'BLACK', 'RAILROAD');
 
 -- SOCIETÀ
 INSERT INTO properties (name, price, rent, color_group, type) VALUES
-                                                                  ('Società Elettrica', 150, 0, 'BROWN', 'UTILITY'),
-                                                                  ('Società Acqua Potabile', 150, 0, 'LIGHT_BLUE', 'UTILITY');
+                                                                  ('Società Elettrica', 150, 0, 'WHITE', 'UTILITY'),
+                                                                  ('Società Acqua Potabile', 150, 0, 'WHITE', 'UTILITY');
 
--- PROPRIETÀ SPECIALI (Parcheggio, Prigione, ecc.)
-INSERT INTO properties (name, price, rent, color_group, type) VALUES
-                                                                  ('Via!', 0, 0, 'BROWN', 'SPECIAL'),
-                                                                  ('Prigione', 0, 0, 'BROWN', 'SPECIAL'),
-                                                                  ('Parcheggio Gratuito', 0, 0, 'BROWN', 'SPECIAL'),
-                                                                  ('In Prigione', 0, 0, 'BROWN', 'SPECIAL'),
-                                                                  ('Tassa Patrimoniale', 0, 200, 'BROWN', 'SPECIAL'),
-                                                                  ('Tassa di Lusso', 0, 100, 'BROWN', 'SPECIAL');
-
--- CARTE PROBABILITÀ E IMPREVISTI (come proprietà speciali per referenza)
-INSERT INTO properties (name, price, rent, color_group, type) VALUES
-                                                                  ('Probabilità 1', 0, 0, 'BROWN', 'SPECIAL'),
-                                                                  ('Probabilità 2', 0, 0, 'LIGHT_BLUE', 'SPECIAL'),
-                                                                  ('Probabilità 3', 0, 0, 'ORANGE', 'SPECIAL'),
-                                                                  ('Imprevisti 1', 0, 0, 'PINK', 'SPECIAL'),
-                                                                  ('Imprevisti 2', 0, 0, 'RED', 'SPECIAL'),
-                                                                  ('Imprevisti 3', 0, 0, 'YELLOW', 'SPECIAL');

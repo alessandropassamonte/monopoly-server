@@ -336,7 +336,7 @@ public class PropertyService {
     }
 
     public List<PropertyDto> getAllProperties() {
-        return propertyRepository.findByType(PropertyType.STREET)
+        return propertyRepository.findAll()
                 .stream()
                 .map(this::mapToPropertyDto)
                 .collect(Collectors.toList());

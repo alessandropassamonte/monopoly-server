@@ -13,9 +13,7 @@ import com.monopoly.server.monopoly.exceptions.InsufficientFundsException;
 import com.monopoly.server.monopoly.exceptions.InvalidTransactionException;
 import com.monopoly.server.monopoly.exceptions.PlayerNotFoundException;
 import com.monopoly.server.monopoly.exceptions.SessionNotFoundException;
-import com.monopoly.server.monopoly.repositories.GameSessionRepository;
-import com.monopoly.server.monopoly.repositories.PlayerRepository;
-import com.monopoly.server.monopoly.repositories.TransactionRepository;
+import com.monopoly.server.monopoly.repositories.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +31,9 @@ public class BankService {
     private PlayerRepository playerRepository;
 
     @Autowired
+    private PropertyOwnershipRepository propertyOwnershipRepository;
+
+    @Autowired
     private TransactionRepository transactionRepository;
 
     @Autowired
@@ -41,6 +42,7 @@ public class BankService {
     @Autowired
     private WebSocketService webSocketService;
 
+    @Transactional
     public TransactionDto transferMoney(Long fromPlayerId, Long toPlayerId, BigDecimal amount, String description) {
         Player fromPlayer = playerRepository.findById(fromPlayerId)
                 .orElseThrow(() -> new PlayerNotFoundException("Giocatore mittente non trovato"));
@@ -74,21 +76,27 @@ public class BankService {
         );
         transaction = transactionRepository.save(transaction);
 
+        // Crea DTOs direttamente dalle entità aggiornate senza ricaricarle
+        PlayerDto fromPlayerDto = mapToPlayerDto(fromPlayer);
+        PlayerDto toPlayerDto = mapToPlayerDto(toPlayer);
+        TransactionDto transactionDto = mapToTransactionDto(transaction);
+
         // Notifica via WebSocket
         webSocketService.broadcastToSession(
                 fromPlayer.getGameSession().getSessionCode(),
                 new WebSocketMessage("BALANCE_UPDATE",
                         fromPlayer.getGameSession().getSessionCode(),
                         Map.of(
-                                "fromPlayer", mapToPlayerDto(fromPlayer),
-                                "toPlayer", mapToPlayerDto(toPlayer),
-                                "transaction", mapToTransactionDto(transaction)
+                                "fromPlayer", fromPlayerDto,
+                                "toPlayer", toPlayerDto,
+                                "transaction", transactionDto
                         ))
         );
 
-        return mapToTransactionDto(transaction);
+        return transactionDto;
     }
 
+    @Transactional
     public TransactionDto payToBank(Long playerId, BigDecimal amount, String description) {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new PlayerNotFoundException("Giocatore non trovato"));
@@ -110,16 +118,21 @@ public class BankService {
         );
         transaction = transactionRepository.save(transaction);
 
+        // Usa l'oggetto già aggiornato
+        PlayerDto playerDto = mapToPlayerDto(player);
+        TransactionDto transactionDto = mapToTransactionDto(transaction);
+
         webSocketService.broadcastToSession(
                 player.getGameSession().getSessionCode(),
                 new WebSocketMessage("BALANCE_UPDATE",
                         player.getGameSession().getSessionCode(),
-                        Map.of("player", mapToPlayerDto(player)))
+                        Map.of("player", playerDto))
         );
 
-        return mapToTransactionDto(transaction);
+        return transactionDto;
     }
 
+    @Transactional
     public TransactionDto payFromBank(Long playerId, BigDecimal amount, String description) {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new PlayerNotFoundException("Giocatore non trovato"));
@@ -137,14 +150,18 @@ public class BankService {
         );
         transaction = transactionRepository.save(transaction);
 
+        // Usa l'oggetto già aggiornato
+        PlayerDto playerDto = mapToPlayerDto(player);
+        TransactionDto transactionDto = mapToTransactionDto(transaction);
+
         webSocketService.broadcastToSession(
                 player.getGameSession().getSessionCode(),
                 new WebSocketMessage("BALANCE_UPDATE",
                         player.getGameSession().getSessionCode(),
-                        Map.of("player", mapToPlayerDto(player)))
+                        Map.of("player", playerDto))
         );
 
-        return mapToTransactionDto(transaction);
+        return transactionDto;
     }
 
     public List<TransactionDto> getSessionTransactions(String sessionCode) {
@@ -158,13 +175,22 @@ public class BankService {
     }
 
     private PlayerDto mapToPlayerDto(Player player) {
+        int propertiesCount = 0;
+        try {
+            // Usa il repository corretto per contare le proprietà
+            propertiesCount = propertyOwnershipRepository.countByPlayerId(player.getId());
+        } catch (Exception e) {
+            System.err.println("Errore nel conteggio delle proprietà per il giocatore " + player.getId());
+            propertiesCount = 0;
+        }
+
         return PlayerDto.builder()
                 .id(player.getId())
                 .name(player.getName())
                 .balance(player.getBalance())
                 .color(player.getColor())
                 .isHost(player.isHost())
-                .propertiesCount(player.getProperties().size())
+                .propertiesCount(propertiesCount)
                 .build();
     }
 

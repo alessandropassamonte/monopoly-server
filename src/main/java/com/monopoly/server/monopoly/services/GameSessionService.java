@@ -10,10 +10,13 @@ import com.monopoly.server.monopoly.enums.PlayerColor;
 import com.monopoly.server.monopoly.exceptions.*;
 import com.monopoly.server.monopoly.repositories.GameSessionRepository;
 import com.monopoly.server.monopoly.repositories.PlayerRepository;
+import com.monopoly.server.monopoly.repositories.PropertyOwnershipRepository;
+import com.monopoly.server.monopoly.repositories.PropertyRepository;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.EntityManager;
@@ -29,6 +32,9 @@ public class GameSessionService {
 
     @Autowired
     private GameSessionRepository gameSessionRepository;
+
+    @Autowired
+    private PropertyOwnershipRepository propertyOwnershipRepository;
 
     @Autowired
     private PlayerRepository playerRepository;
@@ -175,26 +181,42 @@ public class GameSessionService {
     }
 
     private PlayerDto mapToPlayerDto(Player player) {
+        int propertiesCount = 0;
+        try {
+            // Usa il repository corretto per contare le proprietà
+            propertiesCount = propertyOwnershipRepository.countByPlayerId(player.getId());
+        } catch (Exception e) {
+            System.err.println("Errore nel conteggio delle proprietà per il giocatore " + player.getId());
+            propertiesCount = 0;
+        }
+
         return PlayerDto.builder()
                 .id(player.getId())
                 .name(player.getName())
                 .balance(player.getBalance())
                 .color(player.getColor())
                 .isHost(player.isHost())
-                .propertiesCount(player.getProperties().size())
+                .propertiesCount(propertiesCount)
                 .build();
     }
-
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
     public GameSessionDto getSession(String sessionCode) {
         System.out.println("=== GETTING SESSION: " + sessionCode + " ===");
 
         GameSession session = gameSessionRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
 
-        System.out.println("Session found, players count: " + session.getPlayers().size());
-        session.getPlayers().forEach(p ->
-                System.out.println("Player: " + p.getName() + ", isHost: " + p.isHost())
-        );
+        // Forza l'inizializzazione delle collezioni in modo controllato
+        session.getPlayers().forEach(player -> {
+            try {
+                // Inizializza la collezione properties se non è già caricata
+                if (player.getProperties() instanceof org.hibernate.collection.spi.PersistentCollection) {
+                    org.hibernate.Hibernate.initialize(player.getProperties());
+                }
+            } catch (Exception e) {
+                System.err.println("Errore nell'inizializzazione delle proprietà per il giocatore " + player.getId());
+            }
+        });
 
         return mapToDto(session);
     }
