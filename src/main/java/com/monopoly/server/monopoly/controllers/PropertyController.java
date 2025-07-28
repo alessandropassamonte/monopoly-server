@@ -2,6 +2,9 @@ package com.monopoly.server.monopoly.controllers;
 
 import com.monopoly.server.monopoly.classes.dto.PropertyDto;
 import com.monopoly.server.monopoly.classes.dto.PropertyOwnershipDto;
+import com.monopoly.server.monopoly.classes.dto.TransactionDto;
+import com.monopoly.server.monopoly.classes.request.PayRentRequest;
+import com.monopoly.server.monopoly.classes.request.TransferPropertyRequest;
 import com.monopoly.server.monopoly.exceptions.*;
 import com.monopoly.server.monopoly.services.PropertyService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +56,68 @@ public class PropertyController {
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
             System.err.println("Unexpected error in purchase: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * NUOVO: Pagamento affitto
+     */
+    @PostMapping("/{propertyId}/pay-rent")
+    public ResponseEntity<TransactionDto> payRent(
+            @PathVariable Long propertyId,
+            @RequestBody PayRentRequest request) {
+        try {
+            System.out.println("=== PAY RENT REQUEST ===");
+            System.out.println("Property ID: " + propertyId + ", Tenant ID: " + request.getTenantPlayerId() + ", Dice: " + request.getDiceRoll());
+
+            TransactionDto transaction = propertyService.payRent(
+                    propertyId,
+                    request.getTenantPlayerId(),
+                    request.getDiceRoll()
+            );
+            System.out.println("Rent paid successfully: " + transaction.getAmount());
+            return ResponseEntity.ok(transaction);
+        } catch (PlayerNotFoundException | PropertyNotFoundException e) {
+            System.err.println("Not found error: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (InvalidTransactionException | InsufficientFundsException e) {
+            System.err.println("Transaction error: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            System.err.println("Unexpected error in rent payment: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * NUOVO: Trasferimento proprietà tra giocatori
+     */
+    @PostMapping("/ownership/{ownershipId}/transfer")
+    public ResponseEntity<PropertyOwnershipDto> transferProperty(
+            @PathVariable Long ownershipId,
+            @RequestBody TransferPropertyRequest request) {
+        try {
+            System.out.println("=== TRANSFER PROPERTY REQUEST ===");
+            System.out.println("Ownership ID: " + ownershipId + ", New Owner ID: " + request.getNewOwnerId());
+
+            PropertyOwnershipDto ownership = propertyService.transferProperty(
+                    ownershipId,
+                    request.getNewOwnerId(),
+                    request.getPrice()
+            );
+            System.out.println("Property transferred successfully: " + ownership.getPropertyName());
+            return ResponseEntity.ok(ownership);
+        } catch (PlayerNotFoundException | PropertyNotFoundException e) {
+            System.err.println("Not found error: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (InvalidTransactionException | InsufficientFundsException e) {
+            System.err.println("Transfer error: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            System.err.println("Unexpected error in property transfer: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
@@ -169,6 +234,57 @@ public class PropertyController {
         }
     }
 
+    /**
+     * NUOVO: Vendita casa
+     */
+    @PostMapping("/ownership/{ownershipId}/sell-house")
+    public ResponseEntity<PropertyOwnershipDto> sellHouse(@PathVariable Long ownershipId) {
+        try {
+            System.out.println("=== SELL HOUSE REQUEST ===");
+            System.out.println("Ownership ID: " + ownershipId);
+
+            PropertyOwnershipDto ownership = propertyService.sellHouse(ownershipId);
+            System.out.println("House sold from: " + ownership.getPropertyName() +
+                    " (Remaining houses: " + ownership.getHouses() + ")");
+            return ResponseEntity.ok(ownership);
+        } catch (PropertyNotFoundException e) {
+            System.err.println("Property not found: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (InvalidPropertyActionException e) {
+            System.err.println("Sell error: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            System.err.println("Error selling house: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * NUOVO: Vendita hotel
+     */
+    @PostMapping("/ownership/{ownershipId}/sell-hotel")
+    public ResponseEntity<PropertyOwnershipDto> sellHotel(@PathVariable Long ownershipId) {
+        try {
+            System.out.println("=== SELL HOTEL REQUEST ===");
+            System.out.println("Ownership ID: " + ownershipId);
+
+            PropertyOwnershipDto ownership = propertyService.sellHotel(ownershipId);
+            System.out.println("Hotel sold from: " + ownership.getPropertyName());
+            return ResponseEntity.ok(ownership);
+        } catch (PropertyNotFoundException e) {
+            System.err.println("Property not found: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (InvalidPropertyActionException e) {
+            System.err.println("Sell error: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            System.err.println("Error selling hotel: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping("/{propertyId}/rent")
     public ResponseEntity<BigDecimal> calculateRent(
             @PathVariable Long propertyId,
@@ -185,6 +301,25 @@ public class PropertyController {
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
             System.err.println("Error calculating rent: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * NUOVO: Ottieni tutte le proprietà possedute in una sessione
+     */
+    @GetMapping("/session/{sessionCode}")
+    public ResponseEntity<List<PropertyOwnershipDto>> getSessionProperties(@PathVariable String sessionCode) {
+        try {
+            System.out.println("=== GET SESSION PROPERTIES REQUEST ===");
+            System.out.println("Session Code: " + sessionCode);
+
+            List<PropertyOwnershipDto> properties = propertyService.getSessionProperties(sessionCode);
+            System.out.println("Properties found in session: " + properties.size());
+            return ResponseEntity.ok(properties);
+        } catch (Exception e) {
+            System.err.println("Error getting session properties: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
