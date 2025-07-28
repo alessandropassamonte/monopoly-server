@@ -1,5 +1,4 @@
 package com.monopoly.server.monopoly.entities;
-
 import com.monopoly.server.monopoly.enums.GameStatus;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -26,7 +25,8 @@ public class GameSession {
     @Enumerated(EnumType.STRING)
     private GameStatus status;
 
-    @OneToMany(mappedBy = "gameSession", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    // CORREZIONE: Cambiato da LAZY a EAGER per caricare sempre i players
+    @OneToMany(mappedBy = "gameSession", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<Player> players = new ArrayList<>();
 
     @OneToMany(mappedBy = "gameSession", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
@@ -44,5 +44,4 @@ public class GameSession {
         this.hostName = hostName;
         this.status = GameStatus.WAITING;
     }
-
 }

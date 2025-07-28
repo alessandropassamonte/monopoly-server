@@ -6,7 +6,6 @@ import com.monopoly.server.monopoly.exceptions.*;
 import com.monopoly.server.monopoly.exceptions.InvalidTransactionException;
 import com.monopoly.server.monopoly.exceptions.PlayerNotFoundException;
 import com.monopoly.server.monopoly.services.BankService;
-import com.monopoly.server.monopoly.services.GameSessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

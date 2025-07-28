@@ -16,6 +16,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -33,21 +36,57 @@ public class GameSessionService {
     @Autowired
     private WebSocketService webSocketService;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public GameSessionDto createSession(String hostName) {
+        System.out.println("=== CREATING SESSION FOR HOST: " + hostName + " ===");
+
         String sessionCode = generateSessionCode();
+        System.out.println("Generated session code: " + sessionCode);
+
+        // 1. Crea e salva la sessione
         GameSession session = new GameSession(sessionCode, hostName);
         session = gameSessionRepository.save(session);
+        System.out.println("Session saved with ID: " + session.getId());
 
-        // Crea il player host
+        // 2. Forza il flush per assicurarsi che sia persistita
+        entityManager.flush();
+
+        // 3. Crea il player host
         Player hostPlayer = new Player(hostName, PlayerColor.RED, session, true);
-        playerRepository.save(hostPlayer);
+        hostPlayer = playerRepository.save(hostPlayer);
+        System.out.println("Host player created with ID: " + hostPlayer.getId() + ", isHost: " + hostPlayer.isHost());
 
-        return mapToDto(session);
+        // 4. Forza di nuovo il flush
+        entityManager.flush();
+
+        // 5. Ricarica la sessione dal database con i players
+        entityManager.clear(); // Pulisce il cache di primo livello
+        session = gameSessionRepository.findBySessionCode(sessionCode)
+                .orElseThrow(() -> new RuntimeException("Sessione appena creata non trovata"));
+
+        System.out.println("Session reloaded, players count: " + session.getPlayers().size());
+        session.getPlayers().forEach(p ->
+                System.out.println("Player: " + p.getName() + ", isHost: " + p.isHost() + ", ID: " + p.getId())
+        );
+
+        GameSessionDto dto = mapToDto(session);
+        System.out.println("DTO created with players count: " + dto.getPlayers().size());
+        dto.getPlayers().forEach(p ->
+                System.out.println("DTO Player: " + p.getName() + ", isHost: " + p.isHost() + ", ID: " + p.getId())
+        );
+
+        return dto;
     }
 
     public GameSessionDto joinSession(String sessionCode, String playerName, PlayerColor color) {
+        System.out.println("=== JOINING SESSION: " + sessionCode + " AS: " + playerName + " ===");
+
         GameSession session = gameSessionRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
+
+        System.out.println("Session found, current players: " + session.getPlayers().size());
 
         if (session.getStatus() != GameStatus.WAITING) {
             throw new SessionNotJoinableException("La sessione non è più aperta");
@@ -64,8 +103,19 @@ public class GameSessionService {
             throw new ColorTakenException("Colore già scelto da un altro giocatore");
         }
 
+        // Crea il nuovo player
         Player newPlayer = new Player(playerName, color, session, false);
-        playerRepository.save(newPlayer);
+        newPlayer = playerRepository.save(newPlayer);
+        System.out.println("New player created: " + newPlayer.getName() + ", ID: " + newPlayer.getId());
+
+        // Flush e ricarica
+        entityManager.flush();
+        entityManager.clear();
+
+        session = gameSessionRepository.findBySessionCode(sessionCode)
+                .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
+
+        System.out.println("Session reloaded after join, players count: " + session.getPlayers().size());
 
         // Notifica agli altri giocatori
         webSocketService.broadcastToSession(sessionCode,
@@ -75,13 +125,18 @@ public class GameSessionService {
     }
 
     public void startGame(String sessionCode, Long hostPlayerId) {
+        System.out.println("=== STARTING GAME: " + sessionCode + " BY HOST ID: " + hostPlayerId + " ===");
+
         GameSession session = gameSessionRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
 
         Player host = playerRepository.findById(hostPlayerId)
                 .orElseThrow(() -> new PlayerNotFoundException("Host non trovato"));
 
-        if (!host.isHost() || !host.getGameSession().equals(session)) {
+        System.out.println("Host player found: " + host.getName() + ", isHost: " + host.isHost());
+        System.out.println("Host session ID: " + host.getGameSession().getId() + ", current session ID: " + session.getId());
+
+        if (!host.isHost() || !host.getGameSession().getId().equals(session.getId())) {
             throw new UnauthorizedException("Solo l'host può iniziare la partita");
         }
 
@@ -94,10 +149,16 @@ public class GameSessionService {
 
         webSocketService.broadcastToSession(sessionCode,
                 new WebSocketMessage("GAME_STARTED", sessionCode, null));
+
+        System.out.println("Game started successfully");
     }
 
     private String generateSessionCode() {
-        return StringUtils.leftPad(String.valueOf((int)(Math.random() * 10000)), 4, "0");
+        String code;
+        do {
+            code = StringUtils.leftPad(String.valueOf((int)(Math.random() * 10000)), 4, "0");
+        } while (gameSessionRepository.findBySessionCode(code).isPresent());
+        return code;
     }
 
     private GameSessionDto mapToDto(GameSession session) {
@@ -125,8 +186,16 @@ public class GameSessionService {
     }
 
     public GameSessionDto getSession(String sessionCode) {
+        System.out.println("=== GETTING SESSION: " + sessionCode + " ===");
+
         GameSession session = gameSessionRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
+
+        System.out.println("Session found, players count: " + session.getPlayers().size());
+        session.getPlayers().forEach(p ->
+                System.out.println("Player: " + p.getName() + ", isHost: " + p.isHost())
+        );
+
         return mapToDto(session);
     }
 
