@@ -18,13 +18,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Endpoint con SockJS (mantieni questo per compatibilità)
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:4200")
+                .setAllowedOriginPatterns("*") 
                 .withSockJS();
 
-        // Endpoint WebSocket nativo (aggiungi questo)
+        // Endpoint WebSocket nativo
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:4200");
+                .setAllowedOriginPatterns("*")
+                .setHandshakeHandler(new org.springframework.web.socket.server.support.DefaultHandshakeHandler());
     }
 }

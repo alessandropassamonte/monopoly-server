@@ -76,23 +76,30 @@ public class BankService {
         );
         transaction = transactionRepository.save(transaction);
 
-        // Crea DTOs direttamente dalle entità aggiornate senza ricaricarle
+        // Crea DTOs direttamente dalle entità aggiornate
         PlayerDto fromPlayerDto = mapToPlayerDto(fromPlayer);
         PlayerDto toPlayerDto = mapToPlayerDto(toPlayer);
         TransactionDto transactionDto = mapToTransactionDto(transaction);
 
-        // Notifica via WebSocket
-        webSocketService.broadcastToSession(
-                fromPlayer.getGameSession().getSessionCode(),
-                new WebSocketMessage("BALANCE_UPDATE",
-                        fromPlayer.getGameSession().getSessionCode(),
-                        Map.of(
-                                "fromPlayer", fromPlayerDto,
-                                "toPlayer", toPlayerDto,
-                                "transaction", transactionDto
-                        ))
-        );
+        // CORREZIONE: Notifica WebSocket migliorata con più dettagli
+        String sessionCode = fromPlayer.getGameSession().getSessionCode();
 
+        // Invia aggiornamento balance
+        webSocketService.broadcastBalanceUpdate(sessionCode, Map.of(
+                "type", "PLAYER_TO_PLAYER_TRANSFER",
+                "fromPlayer", fromPlayerDto,
+                "toPlayer", toPlayerDto,
+                "transaction", transactionDto,
+                "timestamp", System.currentTimeMillis()
+        ));
+
+        // AGGIUNTO: Invia anche aggiornamento generale sessione
+        webSocketService.broadcastSessionUpdate(sessionCode, Map.of(
+                "action", "TRANSFER_COMPLETED",
+                "players", List.of(fromPlayerDto, toPlayerDto)
+        ));
+
+        System.out.println("✅ Transfer completed and WebSocket notifications sent");
         return transactionDto;
     }
 
@@ -118,17 +125,20 @@ public class BankService {
         );
         transaction = transactionRepository.save(transaction);
 
-        // Usa l'oggetto già aggiornato
         PlayerDto playerDto = mapToPlayerDto(player);
         TransactionDto transactionDto = mapToTransactionDto(transaction);
 
-        webSocketService.broadcastToSession(
-                player.getGameSession().getSessionCode(),
-                new WebSocketMessage("BALANCE_UPDATE",
-                        player.getGameSession().getSessionCode(),
-                        Map.of("player", playerDto))
-        );
+        // CORREZIONE: Notifica WebSocket migliorata
+        String sessionCode = player.getGameSession().getSessionCode();
 
+        webSocketService.broadcastBalanceUpdate(sessionCode, Map.of(
+                "type", "PLAYER_TO_BANK_PAYMENT",
+                "player", playerDto,
+                "transaction", transactionDto,
+                "timestamp", System.currentTimeMillis()
+        ));
+
+        System.out.println("✅ Bank payment completed and WebSocket notification sent");
         return transactionDto;
     }
 
@@ -150,17 +160,20 @@ public class BankService {
         );
         transaction = transactionRepository.save(transaction);
 
-        // Usa l'oggetto già aggiornato
         PlayerDto playerDto = mapToPlayerDto(player);
         TransactionDto transactionDto = mapToTransactionDto(transaction);
 
-        webSocketService.broadcastToSession(
-                player.getGameSession().getSessionCode(),
-                new WebSocketMessage("BALANCE_UPDATE",
-                        player.getGameSession().getSessionCode(),
-                        Map.of("player", playerDto))
-        );
+        // CORREZIONE: Notifica WebSocket migliorata
+        String sessionCode = player.getGameSession().getSessionCode();
 
+        webSocketService.broadcastBalanceUpdate(sessionCode, Map.of(
+                "type", "BANK_TO_PLAYER_PAYMENT",
+                "player", playerDto,
+                "transaction", transactionDto,
+                "timestamp", System.currentTimeMillis()
+        ));
+
+        System.out.println("✅ Bank payment from bank completed and WebSocket notification sent");
         return transactionDto;
     }
 
