@@ -3,6 +3,7 @@ package com.monopoly.server.monopoly.controllers;
 import com.monopoly.server.monopoly.classes.dto.PropertyDto;
 import com.monopoly.server.monopoly.classes.dto.PropertyOwnershipDto;
 import com.monopoly.server.monopoly.classes.dto.TransactionDto;
+import com.monopoly.server.monopoly.classes.request.CustomPurchaseRequest;
 import com.monopoly.server.monopoly.classes.request.MultipleTransferRequest;
 import com.monopoly.server.monopoly.classes.request.PayRentRequest;
 import com.monopoly.server.monopoly.classes.request.TransferPropertyRequest;
@@ -33,6 +34,42 @@ public class PropertyController {
             return ResponseEntity.ok(properties);
         } catch (Exception e) {
             System.err.println("Error getting all properties: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/{propertyId}/purchase-custom")
+    public ResponseEntity<PropertyOwnershipDto> purchasePropertyCustomPrice(
+            @PathVariable Long propertyId,
+            @RequestBody CustomPurchaseRequest request) {
+        try {
+            System.out.println("=== PURCHASE PROPERTY CUSTOM PRICE REQUEST ===");
+            System.out.println("Property ID: " + propertyId +
+                    ", Player ID: " + request.getPlayerId() +
+                    ", Custom Price: " + request.getCustomPrice());
+
+            PropertyOwnershipDto ownership = propertyService.purchasePropertyCustomPrice(
+                    request.getPlayerId(),
+                    propertyId,
+                    request.getCustomPrice()
+            );
+
+            System.out.println("Property purchased successfully at custom price: " +
+                    ownership.getPropertyName() + " for " + request.getCustomPrice());
+            return ResponseEntity.ok(ownership);
+
+        } catch (PlayerNotFoundException | PropertyNotFoundException e) {
+            System.err.println("Not found error: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (PropertyAlreadyOwnedException | InsufficientFundsException e) {
+            System.err.println("Bad request error: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid custom price: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            System.err.println("Unexpected error in custom purchase: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }

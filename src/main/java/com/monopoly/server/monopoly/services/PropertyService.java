@@ -801,7 +801,87 @@ public class PropertyService {
         return allNonMortgaged;
     }
 
+    public PropertyOwnershipDto purchasePropertyCustomPrice(Long playerId, Long propertyId, BigDecimal customPrice) {
+        System.out.println("=== PURCHASE PROPERTY CUSTOM PRICE SERVICE ===");
+        System.out.println("Player ID: " + playerId + ", Property ID: " + propertyId + ", Custom Price: " + customPrice);
 
+        // Validazione prezzo personalizzato
+        if (customPrice == null || customPrice.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Il prezzo personalizzato deve essere maggiore o uguale a zero");
+        }
+
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new PlayerNotFoundException("Giocatore non trovato"));
+
+        Property property = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
+
+        // Verifica se la proprietà è già posseduta
+        if (ownershipRepository.existsByProperty(property)) {
+            throw new PropertyAlreadyOwnedException("Proprietà già posseduta");
+        }
+
+        // Verifica fondi sufficienti per il prezzo personalizzato
+        if (player.getBalance().compareTo(customPrice) < 0) {
+            throw new InsufficientFundsException("Fondi insufficienti per l'acquisto al prezzo personalizzato di " + customPrice);
+        }
+
+        // Effettua il pagamento al prezzo personalizzato
+        String description = String.format("Acquisto %s (prezzo personalizzato: %s, prezzo ufficiale: %s)",
+                property.getName(),
+                customPrice,
+                property.getPrice());
+
+        bankService.payToBank(playerId, customPrice, description);
+
+        // Crea ownership
+        PropertyOwnership ownership = new PropertyOwnership();
+        ownership.setProperty(property);
+        ownership.setPlayer(player);
+        ownership.setHouses(0);
+        ownership.setHasHotel(false);
+        ownership.setMortgaged(false);
+
+        ownership = ownershipRepository.save(ownership);
+
+        // Invia notifica WebSocket
+        Map<String, Object> wsData = Map.of(
+                "propertyId", propertyId,
+                "propertyName", property.getName(),
+                "customPrice", customPrice,
+                "officialPrice", property.getPrice(),
+                "playerId", playerId,
+                "playerName", player.getName(),
+                "message", String.format("%s ha acquistato %s per %s (prezzo ufficiale: %s)",
+                        player.getName(),
+                        property.getName(),
+                        customPrice,
+                        property.getPrice())
+        );
+
+        WebSocketMessage message = new WebSocketMessage(
+                "PROPERTY_PURCHASED_CUSTOM",
+                player.getGameSession().getSessionCode(),
+                wsData
+        );
+
+        webSocketService.broadcastToSession(player.getGameSession().getSessionCode(), message);
+
+        // Converti in DTO
+        return PropertyOwnershipDto.builder()
+                .id(ownership.getId())
+                .propertyId(property.getId())
+                .propertyName(property.getName())
+                .propertyPrice(property.getPrice()) // Mantiene il prezzo ufficiale nel DTO
+                .propertyType(property.getType())
+                .colorGroup(property.getColorGroup())
+                .houses(ownership.getHouses())
+                .hasHotel(ownership.getHasHotel())
+                .mortgaged(ownership.getMortgaged())
+                .currentRent(calculatePropertyRent(ownership, 7)) // Usa il metodo esistente con dice roll di default
+                .purchasedAt(ownership.getPurchasedAt())
+                .build();
+    }
 
     private BigDecimal calculateRailroadRent(PropertyOwnership ownership) {
         // Conta quante stazioni possiede il giocatore
