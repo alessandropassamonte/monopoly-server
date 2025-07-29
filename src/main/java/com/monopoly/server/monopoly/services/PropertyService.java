@@ -748,35 +748,40 @@ public class PropertyService {
     }
 
     private BigDecimal calculateStreetRent(PropertyOwnership ownership) {
-        // IMPORTANTE: Se la proprietà è ipotecata, affitto = 0
+        // 1. Niente affitto se l'atto è ipotecato
         if (ownership.getMortgaged()) {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal baseRent = ownership.getProperty().getRent();
+        Property p = ownership.getProperty();
+        int houses    = ownership.getHouses();
+        boolean hotel = ownership.getHasHotel();
 
-        // Se ha hotel
-        if (ownership.getHasHotel()) {
-            return baseRent.multiply(BigDecimal.valueOf(5));
+        // 2. Con hotel => valore “affittoHotel” salvato sul titolo
+        if (hotel) {
+            return p.getRentHotel();
         }
 
-        // Se ha case
-        if (ownership.getHouses() > 0) {
-            int multiplier = switch (ownership.getHouses()) {
-                case 1 -> 5;
-                case 2 -> 15;
-                case 3 -> 45;
-                case 4 -> 80;
-                default -> 1;
+        // 3. Con case => valore puntuale per 1‑4 case
+        if (houses > 0) {
+            return switch (houses) {
+                case 1 -> p.getRentWith1House();
+                case 2 -> p.getRentWith2Houses();
+                case 3 -> p.getRentWith3Houses();
+                case 4 -> p.getRentWith4Houses();
+                default -> throw new IllegalStateException(
+                        "Numero di case non valido: " + houses);
             };
-            return baseRent.multiply(BigDecimal.valueOf(multiplier));
         }
 
-        // CORREZIONE: Verifica monopolio considerando solo proprietà NON ipotecate
-        if (hasCompleteColorGroupNonMortgaged(ownership.getPlayer(), ownership.getProperty().getColorGroup())) {
+        // 4. Nessuna costruzione: check monopolio (solo atti non ipotecati)
+        BigDecimal baseRent = p.getRent();
+        if (hasCompleteColorGroupNonMortgaged(
+                ownership.getPlayer(), p.getColorGroup())) {
             return baseRent.multiply(BigDecimal.valueOf(2));
         }
 
+        // 5. Caso standard: affitto base
         return baseRent;
     }
 

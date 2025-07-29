@@ -27,11 +27,26 @@ public class Property {
     @Column(nullable = false)
     private BigDecimal rent;
 
+    @Column(name = "rent_house_1")
+    private BigDecimal rentWith1House;
+    @Column(name = "rent_house_2")
+    private BigDecimal rentWith2Houses;
+    @Column(name = "rent_house_3")
+    private BigDecimal rentWith3Houses;
+    @Column(name = "rent_house_4")
+    private BigDecimal rentWith4Houses;
+    @Column(name = "rent_hotel")
+    private BigDecimal rentHotel;
+
     @Enumerated(EnumType.STRING)
     private PropertyColor colorGroup;
 
     @Enumerated(EnumType.STRING)
     private PropertyType type; // STREET, RAILROAD, UTILITY, SPECIAL
+
+
+
+
 
     // getters and setters...
 }
