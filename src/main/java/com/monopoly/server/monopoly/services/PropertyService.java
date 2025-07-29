@@ -18,8 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -92,6 +91,9 @@ public class PropertyService {
      */
     @Transactional
     public TransactionDto payRent(Long propertyId, Long tenantPlayerId, int diceRoll) {
+        System.out.println("=== PAY RENT REQUEST ===");
+        System.out.println("Property ID: " + propertyId + ", Tenant ID: " + tenantPlayerId + ", Dice: " + diceRoll);
+
         Property property = propertyRepository.findById(propertyId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
 
@@ -103,35 +105,78 @@ public class PropertyService {
 
         Player owner = ownership.getPlayer();
 
+        System.out.println("Property: " + property.getName() + ", Owner: " + owner.getName() + ", Tenant: " + tenant.getName());
+
         // Non può pagare affitto a se stesso
         if (tenant.getId().equals(owner.getId())) {
+            System.out.println("ERROR: Cannot pay rent to self");
             throw new InvalidTransactionException("Non puoi pagare affitto a te stesso");
         }
 
         // Proprietà ipotecata non genera affitto
         if (ownership.isMortgaged()) {
+            System.out.println("ERROR: Property is mortgaged");
             throw new InvalidTransactionException("Non si paga affitto su proprietà ipotecate");
         }
 
         // Calcola affitto
         BigDecimal rentAmount = calculatePropertyRent(ownership, diceRoll);
+        System.out.println("Calculated rent amount: " + rentAmount);
 
         if (rentAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            System.out.println("ERROR: No rent due");
             throw new InvalidTransactionException("Affitto non dovuto");
         }
 
         // Verifica fondi sufficienti
         if (tenant.getBalance().compareTo(rentAmount) < 0) {
+            System.out.println("ERROR: Insufficient funds. Tenant balance: " + tenant.getBalance() + ", Rent: " + rentAmount);
             throw new InsufficientFundsException("Fondi insufficienti per pagare l'affitto");
         }
 
         // Effettua il trasferimento
-        return bankService.transferMoney(
+        TransactionDto transaction = bankService.transferMoney(
                 tenant.getId(),
                 owner.getId(),
                 rentAmount,
                 "Affitto " + property.getName()
         );
+
+        System.out.println("✅ Rent payment completed successfully");
+        return transaction;
+    }
+
+    // NUOVO: Metodo helper per vendita edifici nel trasferimento
+    private void sellAllBuildings(PropertyOwnership ownership) {
+        BigDecimal totalRefund = BigDecimal.ZERO;
+        BigDecimal houseCost = getHouseCost(ownership.getProperty().getColorGroup());
+        BigDecimal sellPrice = houseCost.divide(BigDecimal.valueOf(2));
+
+        System.out.println("=== SELLING ALL BUILDINGS ===");
+        System.out.println("Property: " + ownership.getProperty().getName());
+        System.out.println("Has hotel: " + ownership.isHasHotel() + ", Houses: " + ownership.getHouses());
+
+        if (ownership.isHasHotel()) {
+            totalRefund = totalRefund.add(sellPrice);
+            ownership.setHasHotel(false);
+            System.out.println("Sold hotel for: " + sellPrice);
+        }
+
+        if (ownership.getHouses() > 0) {
+            BigDecimal housesRefund = sellPrice.multiply(BigDecimal.valueOf(ownership.getHouses()));
+            totalRefund = totalRefund.add(housesRefund);
+            System.out.println("Sold " + ownership.getHouses() + " houses for: " + housesRefund);
+            ownership.setHouses(0);
+        }
+
+        if (totalRefund.compareTo(BigDecimal.ZERO) > 0) {
+            bankService.payFromBank(ownership.getPlayer().getId(), totalRefund,
+                    "Vendita forzata edifici da " + ownership.getProperty().getName());
+            System.out.println("Total refund: " + totalRefund);
+        }
+
+        ownershipRepository.save(ownership);
+        System.out.println("✅ All buildings sold successfully");
     }
 
     /**
@@ -204,6 +249,9 @@ public class PropertyService {
      */
     @Transactional
     public PropertyOwnershipDto transferProperty(Long ownershipId, Long newOwnerId, BigDecimal price) {
+        System.out.println("=== TRANSFERRING PROPERTY ===");
+        System.out.println("Ownership ID: " + ownershipId + ", New Owner ID: " + newOwnerId + ", Price: " + price);
+
         PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
 
@@ -221,6 +269,9 @@ public class PropertyService {
         if (currentOwner.getId().equals(newOwner.getId())) {
             throw new InvalidTransactionException("Non puoi trasferire una proprietà a te stesso");
         }
+
+        // CORREZIONE: Verifica se il proprietario corrente aveva il gruppo completo PRIMA del trasferimento
+        boolean currentOwnerHadCompleteGroup = hasColorGroupMonopoly(currentOwner, ownership.getProperty().getColorGroup());
 
         // Prima di trasferire, vendi tutti gli edifici se presenti
         if (ownership.getHouses() > 0 || ownership.isHasHotel()) {
@@ -257,47 +308,144 @@ public class PropertyService {
         ownership.setPlayer(newOwner);
         ownership = ownershipRepository.save(ownership);
 
+        // NUOVO: Ricalcola affitti per entrambi i giocatori se necessario
+        PropertyColor colorGroup = ownership.getProperty().getColorGroup();
+
+        // Ricalcola per il vecchio proprietario (se aveva il gruppo completo)
+        if (currentOwnerHadCompleteGroup) {
+            recalculateGroupRents(currentOwner, colorGroup);
+        }
+
+        // Ricalcola per il nuovo proprietario (se ora ha il gruppo completo)
+        boolean newOwnerHasCompleteGroup = hasColorGroupMonopoly(newOwner, colorGroup);
+        if (newOwnerHasCompleteGroup) {
+            recalculateGroupRents(newOwner, colorGroup);
+        }
+
         // Notifica WebSocket
-        webSocketService.broadcastToSession(
+        webSocketService.broadcastPropertyUpdate(
                 currentOwner.getGameSession().getSessionCode(),
-                new WebSocketMessage("PROPERTY_TRANSFERRED",
-                        currentOwner.getGameSession().getSessionCode(),
-                        Map.of(
-                                "property", ownership.getProperty().getName(),
-                                "fromPlayer", currentOwner.getName(),
-                                "toPlayer", newOwner.getName(),
-                                "price", price != null ? price : BigDecimal.ZERO
-                        ))
+                Map.of(
+                        "action", "PROPERTY_TRANSFERRED",
+                        "property", ownership.getProperty().getName(),
+                        "fromPlayer", currentOwner.getName(),
+                        "toPlayer", newOwner.getName(),
+                        "price", price != null ? price : BigDecimal.ZERO,
+                        "currentOwnerHadCompleteGroup", currentOwnerHadCompleteGroup,
+                        "newOwnerHasCompleteGroup", newOwnerHasCompleteGroup
+                )
         );
 
+        System.out.println("✅ Property transfer completed successfully");
         return mapToOwnershipDto(ownership);
     }
 
     /**
-     * Vende tutti gli edifici da una proprietà (regola obbligatoria prima del trasferimento)
+     * NUOVO: Trasferimento multiplo di proprietà (per scambio negoziato)
      */
-    private void sellAllBuildings(PropertyOwnership ownership) {
-        BigDecimal totalRefund = BigDecimal.ZERO;
-        BigDecimal houseCost = getHouseCost(ownership.getProperty().getColorGroup());
-        BigDecimal sellPrice = houseCost.divide(BigDecimal.valueOf(2));
+    @Transactional
+    public List<PropertyOwnershipDto> transferMultipleProperties(
+            List<Long> ownershipIds,
+            Long newOwnerId,
+            BigDecimal compensationAmount) {
 
-        if (ownership.isHasHotel()) {
-            totalRefund = totalRefund.add(sellPrice);
-            ownership.setHasHotel(false);
+        System.out.println("=== TRANSFERRING MULTIPLE PROPERTIES ===");
+        System.out.println("Ownership IDs: " + ownershipIds + ", New Owner: " + newOwnerId + ", Compensation: " + compensationAmount);
+
+        if (ownershipIds == null || ownershipIds.isEmpty()) {
+            throw new InvalidTransactionException("Nessuna proprietà da trasferire");
         }
 
-        if (ownership.getHouses() > 0) {
-            totalRefund = totalRefund.add(sellPrice.multiply(BigDecimal.valueOf(ownership.getHouses())));
-            ownership.setHouses(0);
+        Player newOwner = playerRepository.findById(newOwnerId)
+                .orElseThrow(() -> new PlayerNotFoundException("Nuovo proprietario non trovato"));
+
+        List<PropertyOwnershipDto> transferredProperties = new ArrayList<>();
+        Player currentOwner = null;
+        Set<PropertyColor> affectedColorGroups = new HashSet<>();
+
+        // Trasferisci tutte le proprietà
+        for (Long ownershipId : ownershipIds) {
+            PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
+                    .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata: " + ownershipId));
+
+            // Verifica che tutte le proprietà appartengano allo stesso giocatore
+            if (currentOwner == null) {
+                currentOwner = ownership.getPlayer();
+            } else if (!currentOwner.getId().equals(ownership.getPlayer().getId())) {
+                throw new InvalidTransactionException("Tutte le proprietà devono appartenere allo stesso giocatore");
+            }
+
+            // Verifica sessione
+            if (!currentOwner.getGameSession().equals(newOwner.getGameSession())) {
+                throw new InvalidTransactionException("I giocatori devono essere nella stessa sessione");
+            }
+
+            // Vendi edifici se presenti
+            if (ownership.getHouses() > 0 || ownership.isHasHotel()) {
+                sellAllBuildings(ownership);
+            }
+
+            // Gestisci ipoteca
+            if (ownership.isMortgaged()) {
+                BigDecimal mortgageTax = ownership.getProperty().getPrice()
+                        .multiply(BigDecimal.valueOf(0.1));
+                if (newOwner.getBalance().compareTo(mortgageTax) >= 0) {
+                    bankService.payToBank(newOwner.getId(), mortgageTax,
+                            "Tassa trasferimento ipoteca " + ownership.getProperty().getName());
+                }
+            }
+
+            // Trasferisci
+            affectedColorGroups.add(ownership.getProperty().getColorGroup());
+            ownership.setPlayer(newOwner);
+            ownership = ownershipRepository.save(ownership);
+
+            transferredProperties.add(mapToOwnershipDto(ownership));
         }
 
-        if (totalRefund.compareTo(BigDecimal.ZERO) > 0) {
-            bankService.payFromBank(ownership.getPlayer().getId(), totalRefund,
-                    "Vendita forzata edifici da " + ownership.getProperty().getName());
+        // Gestisci compenso monetario
+        if (compensationAmount != null && compensationAmount.compareTo(BigDecimal.ZERO) != 0) {
+            if (compensationAmount.compareTo(BigDecimal.ZERO) > 0) {
+                // Il current owner riceve denaro
+                if (newOwner.getBalance().compareTo(compensationAmount) < 0) {
+                    throw new InsufficientFundsException("Fondi insufficienti per il compenso");
+                }
+                bankService.transferMoney(newOwnerId, currentOwner.getId(), compensationAmount,
+                        "Compenso scambio proprietà multiple");
+            } else {
+                // Il current owner paga denaro
+                BigDecimal paymentAmount = compensationAmount.abs();
+                if (currentOwner.getBalance().compareTo(paymentAmount) < 0) {
+                    throw new InsufficientFundsException("Fondi insufficienti per il pagamento");
+                }
+                bankService.transferMoney(currentOwner.getId(), newOwnerId, paymentAmount,
+                        "Pagamento scambio proprietà multiple");
+            }
         }
 
-        ownershipRepository.save(ownership);
+        // Ricalcola affitti per tutti i gruppi di colore coinvolti
+        for (PropertyColor colorGroup : affectedColorGroups) {
+            recalculateGroupRents(currentOwner, colorGroup);
+            recalculateGroupRents(newOwner, colorGroup);
+        }
+
+        // Notifica WebSocket
+        webSocketService.broadcastPropertyUpdate(
+                currentOwner.getGameSession().getSessionCode(),
+                Map.of(
+                        "action", "MULTIPLE_PROPERTIES_TRANSFERRED",
+                        "propertiesCount", transferredProperties.size(),
+                        "fromPlayer", currentOwner.getName(),
+                        "toPlayer", newOwner.getName(),
+                        "compensation", compensationAmount != null ? compensationAmount : BigDecimal.ZERO,
+                        "affectedColorGroups", affectedColorGroups.size()
+                )
+        );
+
+        System.out.println("✅ Multiple properties transfer completed successfully");
+        return transferredProperties;
     }
+
 
     public List<PropertyOwnershipDto> getPlayerProperties(Long playerId) {
         Player player = playerRepository.findById(playerId)
@@ -321,6 +469,9 @@ public class PropertyService {
             throw new InvalidPropertyActionException("Rimuovi case/hotel prima di ipotecare");
         }
 
+        // Verifica se questa proprietà fa parte di un gruppo completo PRIMA dell'ipoteca
+        boolean hadCompleteGroup = hasColorGroupMonopoly(ownership.getPlayer(), ownership.getProperty().getColorGroup());
+
         // Calcola valore ipoteca (50% del prezzo)
         BigDecimal mortgageValue = ownership.getProperty().getPrice().divide(BigDecimal.valueOf(2));
 
@@ -328,12 +479,55 @@ public class PropertyService {
         bankService.payFromBank(ownership.getPlayer().getId(), mortgageValue,
                 "Ipoteca " + ownership.getProperty().getName());
 
+        // Ipoteca la proprietà
         ownership.setMortgaged(true);
         ownership = ownershipRepository.save(ownership);
+
+        // NUOVO: Se aveva il gruppo completo, ricalcola gli affitti delle altre proprietà
+        if (hadCompleteGroup) {
+            recalculateGroupRents(ownership.getPlayer(), ownership.getProperty().getColorGroup());
+        }
+
+        // Notifica WebSocket
+        webSocketService.broadcastPropertyUpdate(
+                ownership.getPlayer().getGameSession().getSessionCode(),
+                Map.of(
+                        "action", "PROPERTY_MORTGAGED",
+                        "propertyName", ownership.getProperty().getName(),
+                        "playerName", ownership.getPlayer().getName(),
+                        "hadCompleteGroup", hadCompleteGroup
+                )
+        );
 
         return mapToOwnershipDto(ownership);
     }
 
+    private void recalculateGroupRents(Player player, PropertyColor colorGroup) {
+        System.out.println("=== RECALCULATING GROUP RENTS ===");
+        System.out.println("Player: " + player.getName() + ", Color Group: " + colorGroup);
+
+        List<PropertyOwnership> groupProperties = ownershipRepository
+                .findByPlayerAndProperty_ColorGroup(player, colorGroup);
+
+        boolean hasCompleteGroup = hasColorGroupMonopoly(player, colorGroup);
+        System.out.println("Has complete group: " + hasCompleteGroup);
+
+        // Aggiorna ogni proprietà del gruppo
+        for (PropertyOwnership ownership : groupProperties) {
+            // Ricalcola solo se non è ipotecata
+            if (!ownership.isMortgaged()) {
+                System.out.println("Recalculating rent for: " + ownership.getProperty().getName());
+                // Il calcolo dell'affitto è già gestito nel metodo calculatePropertyRent
+                // Non serve salvare nulla, il calcolo è dinamico
+            }
+        }
+
+        System.out.println("Group rent recalculation completed");
+    }
+
+    /**
+     * CORRETTO: Riscatta proprietà con ricalcolo affitti gruppo
+     */
     public PropertyOwnershipDto redeemProperty(Long ownershipId) {
         PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
@@ -354,11 +548,30 @@ public class PropertyService {
         bankService.payToBank(ownership.getPlayer().getId(), redeemCost,
                 "Riscatto " + ownership.getProperty().getName());
 
+        // Riscatta la proprietà
         ownership.setMortgaged(false);
         ownership = ownershipRepository.save(ownership);
 
+        // NUOVO: Verifica se ora ha il gruppo completo e ricalcola affitti
+        boolean hasCompleteGroupNow = hasColorGroupMonopoly(ownership.getPlayer(), ownership.getProperty().getColorGroup());
+        if (hasCompleteGroupNow) {
+            recalculateGroupRents(ownership.getPlayer(), ownership.getProperty().getColorGroup());
+        }
+
+        // Notifica WebSocket
+        webSocketService.broadcastPropertyUpdate(
+                ownership.getPlayer().getGameSession().getSessionCode(),
+                Map.of(
+                        "action", "PROPERTY_REDEEMED",
+                        "propertyName", ownership.getProperty().getName(),
+                        "playerName", ownership.getPlayer().getName(),
+                        "hasCompleteGroupNow", hasCompleteGroupNow
+                )
+        );
+
         return mapToOwnershipDto(ownership);
     }
+
 
     public PropertyOwnershipDto buildHouse(Long ownershipId) {
         PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
@@ -467,19 +680,29 @@ public class PropertyService {
     }
 
     public BigDecimal calculateRent(Long propertyId, int diceRoll) {
+        System.out.println("=== CALCULATING RENT ===");
+        System.out.println("Property ID: " + propertyId + ", Dice Roll: " + diceRoll);
+
         Property property = propertyRepository.findById(propertyId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
 
         PropertyOwnership ownership = ownershipRepository.findByProperty(property)
                 .orElse(null);
 
-        if (ownership == null || ownership.isMortgaged()) {
+        if (ownership == null) {
+            System.out.println("Property not owned, rent = 0");
             return BigDecimal.ZERO;
         }
 
-        return calculatePropertyRent(ownership, diceRoll);
-    }
+        if (ownership.isMortgaged()) {
+            System.out.println("Property is mortgaged, rent = 0");
+            return BigDecimal.ZERO;
+        }
 
+        BigDecimal calculatedRent = calculatePropertyRent(ownership, diceRoll);
+        System.out.println("Calculated rent: " + calculatedRent);
+        return calculatedRent;
+    }
     private boolean hasColorGroupMonopoly(Player player, PropertyColor colorGroup) {
         List<Property> groupProperties = propertyRepository.findByColorGroup(colorGroup);
         List<PropertyOwnership> playerGroupOwnership =
@@ -504,6 +727,12 @@ public class PropertyService {
     }
 
     private BigDecimal calculatePropertyRent(PropertyOwnership ownership, int diceRoll) {
+        // IMPORTANTE: Se la proprietà è ipotecata, affitto = 0
+        if (ownership.isMortgaged()) {
+            System.out.println("Property is mortgaged, rent = 0");
+            return BigDecimal.ZERO;
+        }
+
         Property property = ownership.getProperty();
 
         switch (property.getType()) {
@@ -519,15 +748,20 @@ public class PropertyService {
     }
 
     private BigDecimal calculateStreetRent(PropertyOwnership ownership) {
+        // IMPORTANTE: Se la proprietà è ipotecata, affitto = 0
+        if (ownership.isMortgaged()) {
+            return BigDecimal.ZERO;
+        }
+
         BigDecimal baseRent = ownership.getProperty().getRent();
 
+        // Se ha hotel
         if (ownership.isHasHotel()) {
-            // Hotel = affitto base * 5 (regola ufficiale)
             return baseRent.multiply(BigDecimal.valueOf(5));
         }
 
+        // Se ha case
         if (ownership.getHouses() > 0) {
-            // Moltiplicatori ufficiali per case
             int multiplier = switch (ownership.getHouses()) {
                 case 1 -> 5;
                 case 2 -> 15;
@@ -538,13 +772,36 @@ public class PropertyService {
             return baseRent.multiply(BigDecimal.valueOf(multiplier));
         }
 
-        // Controlla se ha monopolio (doppio affitto)
-        if (hasColorGroupMonopoly(ownership.getPlayer(), ownership.getProperty().getColorGroup())) {
+        // CORREZIONE: Verifica monopolio considerando solo proprietà NON ipotecate
+        if (hasCompleteColorGroupNonMortgaged(ownership.getPlayer(), ownership.getProperty().getColorGroup())) {
             return baseRent.multiply(BigDecimal.valueOf(2));
         }
 
         return baseRent;
     }
+
+    private boolean hasCompleteColorGroupNonMortgaged(Player player, PropertyColor colorGroup) {
+        List<Property> allGroupProperties = propertyRepository.findByColorGroup(colorGroup);
+        List<PropertyOwnership> playerGroupOwnership = ownershipRepository
+                .findByPlayerAndProperty_ColorGroup(player, colorGroup);
+
+        // Deve possedere tutte le proprietà del gruppo
+        if (allGroupProperties.size() != playerGroupOwnership.size()) {
+            return false;
+        }
+
+        // IMPORTANTE: Tutte le proprietà del gruppo devono essere NON ipotecate
+        boolean allNonMortgaged = playerGroupOwnership.stream()
+                .allMatch(ownership -> !ownership.isMortgaged());
+
+        System.out.println("Complete group check for " + colorGroup + ": " +
+                "owns all=" + (allGroupProperties.size() == playerGroupOwnership.size()) +
+                ", all non-mortgaged=" + allNonMortgaged);
+
+        return allNonMortgaged;
+    }
+
+
 
     private BigDecimal calculateRailroadRent(PropertyOwnership ownership) {
         // Conta quante stazioni possiede il giocatore

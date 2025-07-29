@@ -3,6 +3,7 @@ package com.monopoly.server.monopoly.controllers;
 import com.monopoly.server.monopoly.classes.dto.PropertyDto;
 import com.monopoly.server.monopoly.classes.dto.PropertyOwnershipDto;
 import com.monopoly.server.monopoly.classes.dto.TransactionDto;
+import com.monopoly.server.monopoly.classes.request.MultipleTransferRequest;
 import com.monopoly.server.monopoly.classes.request.PayRentRequest;
 import com.monopoly.server.monopoly.classes.request.TransferPropertyRequest;
 import com.monopoly.server.monopoly.exceptions.*;
@@ -102,6 +103,7 @@ public class PropertyController {
         try {
             System.out.println("=== TRANSFER PROPERTY REQUEST ===");
             System.out.println("Ownership ID: " + ownershipId + ", New Owner ID: " + request.getNewOwnerId());
+            System.out.println("Price: " + request.getPrice());
 
             PropertyOwnershipDto ownership = propertyService.transferProperty(
                     ownershipId,
@@ -320,6 +322,39 @@ public class PropertyController {
             return ResponseEntity.ok(properties);
         } catch (Exception e) {
             System.err.println("Error getting session properties: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * NUOVO: Trasferimento multiplo proprietà
+     */
+    @PostMapping("/transfer-multiple")
+    public ResponseEntity<List<PropertyOwnershipDto>> transferMultipleProperties(
+            @RequestBody MultipleTransferRequest request) {
+        try {
+            System.out.println("=== MULTIPLE TRANSFER REQUEST ===");
+            System.out.println("Properties: " + request.getOwnershipIds().size());
+            System.out.println("New Owner: " + request.getNewOwnerId());
+            System.out.println("Compensation: " + request.getCompensationAmount());
+
+            List<PropertyOwnershipDto> result = propertyService.transferMultipleProperties(
+                    request.getOwnershipIds(),
+                    request.getNewOwnerId(),
+                    request.getCompensationAmount()
+            );
+
+            System.out.println("Multiple transfer completed successfully: " + result.size() + " properties");
+            return ResponseEntity.ok(result);
+        } catch (PlayerNotFoundException | PropertyNotFoundException e) {
+            System.err.println("Not found error: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (InvalidTransactionException | InsufficientFundsException e) {
+            System.err.println("Transfer error: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            System.err.println("Unexpected error in multiple transfer: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
