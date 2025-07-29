@@ -2,9 +2,11 @@ package com.monopoly.server.monopoly.configurations;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
+@EnableWebMvc
 public class CorsGlobalConfig implements WebMvcConfigurer {
 
     @Override
@@ -14,7 +16,7 @@ public class CorsGlobalConfig implements WebMvcConfigurer {
                 .allowedMethods("*")    // GET, POST, PUT, DELETE, ecc.
                 .allowedHeaders("*")    // tutti gli header
                 .allowCredentials(true) // se ti servono i cookie / Authorization
-                .maxAge(3600);          // caching pre‑flight per 1 h
+                .maxAge(36000);          // caching pre‑flight per 1 h
     }
 }
 
