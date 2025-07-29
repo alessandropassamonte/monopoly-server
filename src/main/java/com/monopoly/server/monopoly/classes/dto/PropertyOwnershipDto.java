@@ -23,7 +23,7 @@ public class PropertyOwnershipDto {
     private PropertyColor colorGroup;
     private int houses;
     private boolean hasHotel;
-    private boolean isMortgaged;
+    private boolean mortgaged;
     private BigDecimal currentRent;
     private LocalDateTime purchasedAt;
 }

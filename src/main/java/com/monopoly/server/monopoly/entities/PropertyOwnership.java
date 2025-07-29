@@ -23,8 +23,8 @@ public class PropertyOwnership {
     private Property property;
 
     private int houses;
-    private boolean hasHotel;
-    private boolean isMortgaged;
+    private Boolean hasHotel;
+    private Boolean mortgaged;
 
     @CreationTimestamp
     private LocalDateTime purchasedAt;

@@ -114,7 +114,7 @@ public class PropertyService {
         }
 
         // Proprietà ipotecata non genera affitto
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             System.out.println("ERROR: Property is mortgaged");
             throw new InvalidTransactionException("Non si paga affitto su proprietà ipotecate");
         }
@@ -154,9 +154,9 @@ public class PropertyService {
 
         System.out.println("=== SELLING ALL BUILDINGS ===");
         System.out.println("Property: " + ownership.getProperty().getName());
-        System.out.println("Has hotel: " + ownership.isHasHotel() + ", Houses: " + ownership.getHouses());
+        System.out.println("Has hotel: " + ownership.getHasHotel() + ", Houses: " + ownership.getHouses());
 
-        if (ownership.isHasHotel()) {
+        if (ownership.getHasHotel()) {
             totalRefund = totalRefund.add(sellPrice);
             ownership.setHasHotel(false);
             System.out.println("Sold hotel for: " + sellPrice);
@@ -191,7 +191,7 @@ public class PropertyService {
             throw new InvalidPropertyActionException("Nessuna casa da vendere");
         }
 
-        if (ownership.isHasHotel()) {
+        if (ownership.getHasHotel()) {
             throw new InvalidPropertyActionException("Vendi prima l'hotel");
         }
 
@@ -224,7 +224,7 @@ public class PropertyService {
         PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
 
-        if (!ownership.isHasHotel()) {
+        if (!ownership.getHasHotel()) {
             throw new InvalidPropertyActionException("Nessun hotel da vendere");
         }
 
@@ -274,7 +274,7 @@ public class PropertyService {
         boolean currentOwnerHadCompleteGroup = hasColorGroupMonopoly(currentOwner, ownership.getProperty().getColorGroup());
 
         // Prima di trasferire, vendi tutti gli edifici se presenti
-        if (ownership.getHouses() > 0 || ownership.isHasHotel()) {
+        if (ownership.getHouses() > 0 || ownership.getHasHotel()) {
             sellAllBuildings(ownership);
         }
 
@@ -293,7 +293,7 @@ public class PropertyService {
         }
 
         // Gestisci ipoteca: nuovo proprietario può estinguere o pagare 10%
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             BigDecimal mortgageTax = ownership.getProperty().getPrice()
                     .multiply(BigDecimal.valueOf(0.1));
 
@@ -381,12 +381,12 @@ public class PropertyService {
             }
 
             // Vendi edifici se presenti
-            if (ownership.getHouses() > 0 || ownership.isHasHotel()) {
+            if (ownership.getHouses() > 0 || ownership.getHasHotel()) {
                 sellAllBuildings(ownership);
             }
 
             // Gestisci ipoteca
-            if (ownership.isMortgaged()) {
+            if (ownership.getMortgaged()) {
                 BigDecimal mortgageTax = ownership.getProperty().getPrice()
                         .multiply(BigDecimal.valueOf(0.1));
                 if (newOwner.getBalance().compareTo(mortgageTax) >= 0) {
@@ -461,11 +461,11 @@ public class PropertyService {
         PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
 
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             throw new InvalidPropertyActionException("Proprietà già ipotecata");
         }
 
-        if (ownership.getHouses() > 0 || ownership.isHasHotel()) {
+        if (ownership.getHouses() > 0 || ownership.getHasHotel()) {
             throw new InvalidPropertyActionException("Rimuovi case/hotel prima di ipotecare");
         }
 
@@ -515,7 +515,7 @@ public class PropertyService {
         // Aggiorna ogni proprietà del gruppo
         for (PropertyOwnership ownership : groupProperties) {
             // Ricalcola solo se non è ipotecata
-            if (!ownership.isMortgaged()) {
+            if (!ownership.getMortgaged()) {
                 System.out.println("Recalculating rent for: " + ownership.getProperty().getName());
                 // Il calcolo dell'affitto è già gestito nel metodo calculatePropertyRent
                 // Non serve salvare nulla, il calcolo è dinamico
@@ -532,7 +532,7 @@ public class PropertyService {
         PropertyOwnership ownership = ownershipRepository.findById(ownershipId)
                 .orElseThrow(() -> new PropertyNotFoundException("Proprietà non trovata"));
 
-        if (!ownership.isMortgaged()) {
+        if (!ownership.getMortgaged()) {
             throw new InvalidPropertyActionException("Proprietà non ipotecata");
         }
 
@@ -581,11 +581,11 @@ public class PropertyService {
             throw new InvalidPropertyActionException("Solo le strade possono avere case");
         }
 
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             throw new InvalidPropertyActionException("Non puoi costruire su proprietà ipotecate");
         }
 
-        if (ownership.isHasHotel()) {
+        if (ownership.getHasHotel()) {
             throw new InvalidPropertyActionException("La proprietà ha già un hotel");
         }
 
@@ -694,7 +694,7 @@ public class PropertyService {
             return BigDecimal.ZERO;
         }
 
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             System.out.println("Property is mortgaged, rent = 0");
             return BigDecimal.ZERO;
         }
@@ -728,7 +728,7 @@ public class PropertyService {
 
     private BigDecimal calculatePropertyRent(PropertyOwnership ownership, int diceRoll) {
         // IMPORTANTE: Se la proprietà è ipotecata, affitto = 0
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             System.out.println("Property is mortgaged, rent = 0");
             return BigDecimal.ZERO;
         }
@@ -749,14 +749,14 @@ public class PropertyService {
 
     private BigDecimal calculateStreetRent(PropertyOwnership ownership) {
         // IMPORTANTE: Se la proprietà è ipotecata, affitto = 0
-        if (ownership.isMortgaged()) {
+        if (ownership.getMortgaged()) {
             return BigDecimal.ZERO;
         }
 
         BigDecimal baseRent = ownership.getProperty().getRent();
 
         // Se ha hotel
-        if (ownership.isHasHotel()) {
+        if (ownership.getHasHotel()) {
             return baseRent.multiply(BigDecimal.valueOf(5));
         }
 
@@ -792,7 +792,7 @@ public class PropertyService {
 
         // IMPORTANTE: Tutte le proprietà del gruppo devono essere NON ipotecate
         boolean allNonMortgaged = playerGroupOwnership.stream()
-                .allMatch(ownership -> !ownership.isMortgaged());
+                .allMatch(ownership -> !ownership.getMortgaged());
 
         System.out.println("Complete group check for " + colorGroup + ": " +
                 "owns all=" + (allGroupProperties.size() == playerGroupOwnership.size()) +
@@ -843,8 +843,8 @@ public class PropertyService {
                 .propertyType(ownership.getProperty().getType())
                 .colorGroup(ownership.getProperty().getColorGroup())
                 .houses(ownership.getHouses())
-                .hasHotel(ownership.isHasHotel())
-                .isMortgaged(ownership.isMortgaged())
+                .hasHotel(ownership.getHasHotel())
+                .mortgaged(ownership.getMortgaged())
                 .currentRent(calculatePropertyRent(ownership, 7)) // Default dice roll
                 .purchasedAt(ownership.getPurchasedAt())
                 .build();

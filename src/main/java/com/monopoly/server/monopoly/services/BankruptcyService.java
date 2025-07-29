@@ -48,7 +48,7 @@ public class BankruptcyService {
 
         for (PropertyOwnership ownership : properties) {
             // Valore degli edifici (venduti al 50%)
-            if (ownership.isHasHotel()) {
+            if (ownership.getHasHotel()) {
                 BigDecimal hotelCost = getHouseCost(ownership.getProperty().getColorGroup());
                 totalValue = totalValue.add(hotelCost.divide(BigDecimal.valueOf(2)));
             }
@@ -60,7 +60,7 @@ public class BankruptcyService {
             }
 
             // Valore ipoteca (50% del prezzo proprietà)
-            if (!ownership.isMortgaged()) {
+            if (!ownership.getMortgaged()) {
                 BigDecimal mortgageValue = ownership.getProperty().getPrice().divide(BigDecimal.valueOf(2));
                 totalValue = totalValue.add(mortgageValue);
             }
@@ -82,7 +82,7 @@ public class BankruptcyService {
 
         // 1. Vendi tutti gli edifici
         for (PropertyOwnership ownership : properties) {
-            if (ownership.isHasHotel() || ownership.getHouses() > 0) {
+            if (ownership.getHasHotel() || ownership.getHouses() > 0) {
                 BigDecimal buildingValue = liquidateBuildings(ownership);
                 totalLiquidated = totalLiquidated.add(buildingValue);
             }
@@ -90,7 +90,7 @@ public class BankruptcyService {
 
         // 2. Ipoteca tutte le proprietà non ipotecate
         for (PropertyOwnership ownership : properties) {
-            if (!ownership.isMortgaged()) {
+            if (!ownership.getMortgaged()) {
                 BigDecimal mortgageValue = ownership.getProperty().getPrice().divide(BigDecimal.valueOf(2));
                 ownership.setMortgaged(true);
                 ownershipRepository.save(ownership);
@@ -167,7 +167,7 @@ public class BankruptcyService {
             // - Pagare il 10% per mantenerla ipotecata
             // - Estinguere l'ipoteca (55% del valore)
             // Per semplicità, manteniamo l'ipoteca e il nuovo proprietario può decidere dopo
-            if (ownership.isMortgaged()) {
+            if (ownership.getMortgaged()) {
                 BigDecimal mortgageTax = ownership.getProperty().getPrice()
                         .multiply(BigDecimal.valueOf(0.1));
 
@@ -203,7 +203,7 @@ public class BankruptcyService {
         BigDecimal houseCost = getHouseCost(ownership.getProperty().getColorGroup());
         BigDecimal sellPrice = houseCost.divide(BigDecimal.valueOf(2));
 
-        if (ownership.isHasHotel()) {
+        if (ownership.getHasHotel()) {
             liquidatedValue = liquidatedValue.add(sellPrice);
             ownership.setHasHotel(false);
         }
@@ -263,7 +263,7 @@ public class BankruptcyService {
 
         for (PropertyOwnership ownership : properties) {
             // Valore della proprietà
-            if (ownership.isMortgaged()) {
+            if (ownership.getMortgaged()) {
                 // Se ipotecata, vale solo il valore di riscatto rimanente
                 BigDecimal remainingValue = ownership.getProperty().getPrice()
                         .multiply(BigDecimal.valueOf(0.05)); // 55% - 50% = 5%
@@ -273,7 +273,7 @@ public class BankruptcyService {
             }
 
             // Valore degli edifici
-            if (ownership.isHasHotel()) {
+            if (ownership.getHasHotel()) {
                 netWorth = netWorth.add(getHouseCost(ownership.getProperty().getColorGroup()));
             }
             if (ownership.getHouses() > 0) {
