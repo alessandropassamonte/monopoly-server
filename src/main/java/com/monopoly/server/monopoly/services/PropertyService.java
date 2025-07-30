@@ -451,7 +451,7 @@ public class PropertyService {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new PlayerNotFoundException("Giocatore non trovato"));
 
-        return ownershipRepository.findByPlayer(player)
+        return ownershipRepository.findByPlayerById(player.getId())
                 .stream()
                 .map(this::mapToOwnershipDto)
                 .collect(Collectors.toList());

@@ -15,13 +15,18 @@ import java.util.Optional;
 
 @Repository
 public interface PropertyOwnershipRepository extends JpaRepository<PropertyOwnership, Long> {
+
+    @Query("SELECT po FROM PropertyOwnership po join po.player pl join po.property pr  WHERE po.player.id = :playerId order by pr.colorGroup")
+    List<PropertyOwnership> findByPlayerById(@Param("playerId") Long playerId);
+
     List<PropertyOwnership> findByPlayer(Player player);
+
     Optional<PropertyOwnership> findByProperty(Property property);
     List<PropertyOwnership> findByPlayerAndProperty_ColorGroup(Player player, PropertyColor colorGroup);
     Optional<PropertyOwnership> findByPlayerAndProperty(Player player, Property property);
     boolean existsByProperty(Property property);
 
-    @Query("SELECT COUNT(po) FROM PropertyOwnership po WHERE po.player.id = :playerId")
+    @Query("SELECT COUNT(po) FROM PropertyOwnership po join po.player pl WHERE po.player.id = :playerId order by pl.color")
     int countByPlayerId(@Param("playerId") Long playerId);
 
     List<PropertyOwnership> findByPlayerId(Long playerId);
