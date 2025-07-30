@@ -240,35 +240,51 @@ public class GameSessionService {
         webSocketService.broadcastToSession(sessionCode,
                 new WebSocketMessage("SESSION_DELETED", sessionCode, null));
 
-        // 2. Elimina tutte le proprietà possedute dai giocatori di questa sessione
-        List<Player> sessionPlayers = session.getPlayers();
-        for (Player player : sessionPlayers) {
-            System.out.println("Deleting properties for player: " + player.getName());
-            propertyOwnershipRepository.deleteByPlayerId(player.getId());
+        try {
+            Long sessionId = session.getId();
+            System.out.println("Deleting all data for session ID: " + sessionId);
+
+            // 2. Usa SQL nativo per eliminare tutto senza controlli di versioning
+
+            // Elimina tutte le proprietà possedute dai giocatori di questa sessione
+            entityManager.createNativeQuery(
+                            "DELETE FROM property_ownership WHERE player_id IN " +
+                                    "(SELECT id FROM players WHERE session_id = ?)")
+                    .setParameter(1, sessionId)
+                    .executeUpdate();
+            System.out.println("Properties deleted");
+
+            // Elimina tutte le transazioni della sessione
+            entityManager.createNativeQuery(
+                            "DELETE FROM transactions WHERE session_id = ?")
+                    .setParameter(1, sessionId)
+                    .executeUpdate();
+            System.out.println("Transactions deleted");
+
+            // Elimina tutti i giocatori della sessione (SENZA controllo version)
+            entityManager.createNativeQuery(
+                            "DELETE FROM players WHERE session_id = ?")
+                    .setParameter(1, sessionId)
+                    .executeUpdate();
+            System.out.println("Players deleted");
+
+            // Elimina la sessione stessa
+            entityManager.createNativeQuery(
+                            "DELETE FROM game_sessions WHERE id = ?")
+                    .setParameter(1, sessionId)
+                    .executeUpdate();
+            System.out.println("Session deleted");
+
+            // Flush finale per assicurarsi che tutto sia persistito
+            entityManager.flush();
+
+            System.out.println("=== SESSION " + sessionCode + " DELETED COMPLETELY ===");
+
+        } catch (Exception e) {
+            System.err.println("Error during session deletion: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Errore durante l'eliminazione della sessione", e);
         }
-
-        // 3. Elimina tutte le transazioni della sessione
-        System.out.println("Deleting transactions for session: " + sessionCode);
-        transactionRepository.deleteByGameSessionId(session.getId());
-
-        // 4. Forza il flush per assicurarsi che le eliminazioni siano persistite
-        entityManager.flush();
-
-        // 5. Elimina tutti i giocatori della sessione (questo eliminerà anche le proprietà per cascade)
-        System.out.println("Deleting players for session: " + sessionCode);
-        playerRepository.deleteByGameSessionId(session.getId());
-
-        // 6. Forza di nuovo il flush
-        entityManager.flush();
-
-        // 7. Infine elimina la sessione stessa
-        System.out.println("Deleting session: " + sessionCode);
-        gameSessionRepository.delete(session);
-
-        // 8. Flush finale
-        entityManager.flush();
-
-        System.out.println("=== SESSION " + sessionCode + " DELETED COMPLETELY ===");
     }
 
     public void endSession(String sessionCode, Long hostPlayerId) {
