@@ -8,10 +8,7 @@ import com.monopoly.server.monopoly.entities.Player;
 import com.monopoly.server.monopoly.enums.GameStatus;
 import com.monopoly.server.monopoly.enums.PlayerColor;
 import com.monopoly.server.monopoly.exceptions.*;
-import com.monopoly.server.monopoly.repositories.GameSessionRepository;
-import com.monopoly.server.monopoly.repositories.PlayerRepository;
-import com.monopoly.server.monopoly.repositories.PropertyOwnershipRepository;
-import com.monopoly.server.monopoly.repositories.PropertyRepository;
+import com.monopoly.server.monopoly.repositories.*;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -32,6 +29,9 @@ public class GameSessionService {
 
     @Autowired
     private GameSessionRepository gameSessionRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
 
     @Autowired
     private PropertyOwnershipRepository propertyOwnershipRepository;
@@ -221,7 +221,59 @@ public class GameSessionService {
         return mapToDto(session);
     }
 
+
+    @Transactional
+    public void deleteSession(String sessionCode, Long hostPlayerId) {
+        System.out.println("=== DELETING SESSION COMPLETELY: " + sessionCode + " ===");
+
+        GameSession session = gameSessionRepository.findBySessionCode(sessionCode)
+                .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
+
+        Player host = playerRepository.findById(hostPlayerId)
+                .orElseThrow(() -> new PlayerNotFoundException("Host non trovato"));
+
+        if (!host.isHost() || !host.getGameSession().equals(session)) {
+            throw new UnauthorizedException("Solo l'host può eliminare la partita");
+        }
+
+        // 1. Notifica a tutti i giocatori che la sessione sta per essere eliminata
+        webSocketService.broadcastToSession(sessionCode,
+                new WebSocketMessage("SESSION_DELETED", sessionCode, null));
+
+        // 2. Elimina tutte le proprietà possedute dai giocatori di questa sessione
+        List<Player> sessionPlayers = session.getPlayers();
+        for (Player player : sessionPlayers) {
+            System.out.println("Deleting properties for player: " + player.getName());
+            propertyOwnershipRepository.deleteByPlayerId(player.getId());
+        }
+
+        // 3. Elimina tutte le transazioni della sessione
+        System.out.println("Deleting transactions for session: " + sessionCode);
+        transactionRepository.deleteByGameSessionId(session.getId());
+
+        // 4. Forza il flush per assicurarsi che le eliminazioni siano persistite
+        entityManager.flush();
+
+        // 5. Elimina tutti i giocatori della sessione (questo eliminerà anche le proprietà per cascade)
+        System.out.println("Deleting players for session: " + sessionCode);
+        playerRepository.deleteByGameSessionId(session.getId());
+
+        // 6. Forza di nuovo il flush
+        entityManager.flush();
+
+        // 7. Infine elimina la sessione stessa
+        System.out.println("Deleting session: " + sessionCode);
+        gameSessionRepository.delete(session);
+
+        // 8. Flush finale
+        entityManager.flush();
+
+        System.out.println("=== SESSION " + sessionCode + " DELETED COMPLETELY ===");
+    }
+
     public void endSession(String sessionCode, Long hostPlayerId) {
+        System.out.println("=== ENDING SESSION (SOFT): " + sessionCode + " ===");
+
         GameSession session = gameSessionRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new SessionNotFoundException("Sessione non trovata"));
 
@@ -232,11 +284,14 @@ public class GameSessionService {
             throw new UnauthorizedException("Solo l'host può terminare la partita");
         }
 
+        // Cambia solo lo status, mantenendo i dati per eventuali statistiche
         session.setStatus(GameStatus.FINISHED);
         gameSessionRepository.save(session);
 
         webSocketService.broadcastToSession(sessionCode,
                 new WebSocketMessage("GAME_ENDED", sessionCode, null));
+
+        System.out.println("Session ended (status changed to FINISHED)");
     }
 
     public List<GameSessionDto> getActiveSessions() {

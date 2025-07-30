@@ -7,6 +7,7 @@ import com.monopoly.server.monopoly.classes.request.StartGameRequest;
 import com.monopoly.server.monopoly.exceptions.*;
 import com.monopoly.server.monopoly.services.GameSessionService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -79,6 +80,35 @@ public class GameSessionController {
             return ResponseEntity.ok().build();
         } catch (SessionNotFoundException | UnauthorizedException e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/{sessionCode}/delete")
+    public ResponseEntity<Void> deleteSession(
+            @PathVariable String sessionCode,
+            @RequestParam Long hostPlayerId) {
+        try {
+            System.out.println("=== DELETE SESSION REQUEST ===");
+            System.out.println("Session Code: " + sessionCode);
+            System.out.println("Host Player ID: " + hostPlayerId);
+
+            gameSessionService.deleteSession(sessionCode, hostPlayerId);
+
+            System.out.println("Session deleted successfully");
+            return ResponseEntity.ok().build();
+        } catch (SessionNotFoundException e) {
+            System.err.println("Session not found: " + e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (PlayerNotFoundException e) {
+            System.err.println("Player not found: " + e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (UnauthorizedException e) {
+            System.err.println("Unauthorized: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            System.err.println("Error deleting session: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
         }
     }
 }
