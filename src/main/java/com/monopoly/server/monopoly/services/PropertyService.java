@@ -446,7 +446,6 @@ public class PropertyService {
         return transferredProperties;
     }
 
-
     public List<PropertyOwnershipDto> getPlayerProperties(Long playerId) {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new PlayerNotFoundException("Giocatore non trovato"));
